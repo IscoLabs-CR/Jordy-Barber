@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: #ffffff;
+  color: #0b1f2a;
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+/* Signature element: classic barber pole — blue -> white -> red (in that order) */
+.pole {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #0077b6 0 6px,
+    #ffffff 6px 12px,
+    #d62828 12px 18px
+  );
+}
+
+/* Accessibility floor: always-visible keyboard focus */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid #0077b6;
+  outline-offset: 2px;
+}
+
+input[type="tel"]::-webkit-outer-spin-button,
+input[type="tel"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
