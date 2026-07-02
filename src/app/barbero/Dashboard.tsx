@@ -104,10 +104,14 @@ export default function Dashboard({
   }, [supabase]);
 
   useEffect(() => {
+    // Fetch the day's agenda from Supabase; setState happens after the async
+    // load resolves, which is the intended data-fetching-in-effect pattern.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load(dateStr);
   }, [dateStr, load]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadWeek();
   }, [loadWeek]);
 

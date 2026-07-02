@@ -42,6 +42,19 @@ export default function Home() {
             </p>
           </div>
         </div>
+
+        <footer className="mt-6 text-center text-[11px] leading-relaxed text-muted/70 select-none">
+          <p className="font-display uppercase tracking-[0.25em]">Isco Labs · 2026</p>
+          <p className="mt-0.5 tracking-wide">
+            Contacto:{" "}
+            <a
+              href="mailto:iscolabscr@gmail.com"
+              className="transition-colors hover:text-brand"
+            >
+              iscolabscr@gmail.com
+            </a>
+          </p>
+        </footer>
       </div>
     </main>
   );

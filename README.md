@@ -170,7 +170,10 @@ src/
       login/page.tsx      # Login por usuario/contraseña
       page.tsx            # Verifica sesión y carga el barbero (server)
       Dashboard.tsx       # Agenda, acciones, panel semanal, Realtime (client)
-supabase/ (gestionado vía MCP; migraciones aplicadas al proyecto remoto)
+supabase/
+  functions/
+    notify-booking/index.ts   # Aviso por correo (Resend) al barbero (trigger -> pg_net -> aquí)
+  (migraciones aplicadas al proyecto remoto vía MCP)
 .env.local               # NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY (publishable)
 ```
 

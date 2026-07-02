@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -10,12 +10,28 @@ import { SHOP_NAME } from "@/lib/booking";
 // map the username to a fixed internal domain (never shown to the user).
 const USERNAME_DOMAIN = "jordybarber.local";
 
+// The Supabase session itself already persists for ~400 days (cookie storage),
+// so a logged-in barber stays signed in across restarts. This only remembers the
+// username to pre-fill it on the rare re-login (e.g. after "Salir"). We never
+// store the password — the browser's password manager handles that securely.
+const REMEMBER_KEY = "jordybarber:barber-username";
+
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Pre-fill the username if it was remembered on a previous login.
+  useEffect(() => {
+    const saved = localStorage.getItem(REMEMBER_KEY);
+    // Reading localStorage must happen in an effect (not a lazy initializer)
+    // to avoid an SSR/client hydration mismatch on the input value.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (saved) setUsername(saved);
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,6 +47,11 @@ export default function LoginPage() {
     if (error) {
       setError("Usuario o contraseña incorrectos.");
       return;
+    }
+    if (remember) {
+      localStorage.setItem(REMEMBER_KEY, username.trim());
+    } else {
+      localStorage.removeItem(REMEMBER_KEY);
     }
     router.push("/barbero");
     router.refresh();
@@ -83,6 +104,16 @@ export default function LoginPage() {
                 className="w-full rounded-xl border border-line bg-paper px-4 py-3 text-ink outline-none transition-colors placeholder:text-muted/60 focus:border-brand"
                 required
               />
+            </label>
+
+            <label className="flex cursor-pointer items-center gap-2.5 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="h-4 w-4 rounded border-line accent-brand"
+              />
+              <span>Mantener sesión iniciada</span>
             </label>
 
             {error && (

@@ -123,7 +123,7 @@ function overlaps(
 }
 
 /**
- * Generate every candidate start on the 20-minute grid where a block of
+ * Generate every candidate start on the 30-minute grid where a block of
  * `durationMin` fits inside working hours. A slot is available only if it is in
  * the future and does not overlap any busy interval for that barber — which is
  * exactly what prevents overbooking across the different service durations.

@@ -4,6 +4,8 @@ export interface Barber {
   display_order: number;
 }
 
+import type { ServiceType } from "./booking";
+
 export type AppointmentKind = "booking" | "block";
 
 export interface Appointment {
@@ -11,7 +13,7 @@ export interface Appointment {
   barber_id: string;
   start_time: string;
   end_time: string;
-  service_type: "sencillo" | "barba" | "full" | null;
+  service_type: ServiceType | null;
   kind: AppointmentKind;
   client_name: string | null;
   client_phone: string | null;
