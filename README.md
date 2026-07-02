@@ -28,6 +28,8 @@ deploy).
    avisos. Se cargan por detrás (ver [Notificaciones por correo](#notificaciones-por-correo-resend)); no
    hay UI para esto (se quitó a propósito para evitar errores del usuario).
 2. **Deploy a Vercel** cuando se decida publicarlo.
+3. **Versionar las migraciones** de Supabase en `supabase/migrations/` (hoy el esquema solo vive en el
+   proyecto remoto — ver [Estructura del proyecto](#estructura-del-proyecto-archivos-clave)).
 
 ---
 
@@ -137,6 +139,11 @@ nativo sin exponer correos. El correo "real" queda libre solo para Resend/avisos
 
 **Realtime:** publicación sobre `appointments`, respetando RLS por usuario.
 
+**Headers de seguridad HTTP:** `next.config.ts` aplica a **todas** las rutas headers defensivos
+(`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy` y
+`Strict-Transport-Security`) y desactiva `poweredByHeader`. Mitigan clickjacking, MIME sniffing y fuga de
+referrer, y evitan anunciar el framework/versión.
+
 ### Notificaciones por correo (Resend)
 Flujo: al insertarse una reserva → trigger `trg_notify_booking` → `pg_net` llama (async) a la **Edge
 Function `notify-booking`** → esta arma el correo y lo envía con **Resend** al `notify_email` del barbero.
@@ -175,11 +182,19 @@ supabase/
     notify-booking/index.ts   # Aviso por correo (Resend) al barbero (trigger -> pg_net -> aquí)
   (migraciones aplicadas al proyecto remoto vía MCP)
 .env.local               # NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY (publishable)
+next.config.ts           # Headers de seguridad HTTP para todas las rutas
 ```
+
+> ⚠️ **Migraciones solo en remoto.** El esquema (tablas, RLS, RPCs, constraint `EXCLUDE`, triggers) se aplicó
+> directo al proyecto Supabase vía MCP y **no hay archivos SQL versionados en el repo**. El único código de
+> base de datos en el repo es la Edge Function. Si el proyecto remoto se pierde, el esquema habría que
+> reconstruirlo a mano. Pendiente recomendado: exportar las migraciones a `supabase/migrations/`.
 
 ---
 
 ## Cómo correrlo localmente
+
+**Prerrequisitos:** Node.js 18.18+ (recomendado 20 LTS) y npm.
 
 ```bash
 npm install
@@ -192,6 +207,15 @@ Requiere `.env.local` (ya presente) con:
 NEXT_PUBLIC_SUPABASE_URL=https://iojrjtuwfpeqxdizuokv.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<publishable key>
 ```
+
+**Scripts disponibles** (`package.json`):
+
+| Comando | Qué hace |
+|---|---|
+| `npm run dev` | Servidor de desarrollo (Turbopack) en `localhost:3000` |
+| `npm run build` | Build de producción |
+| `npm run start` | Sirve el build de producción (correr `build` antes) |
+| `npm run lint` | ESLint (config en `eslint.config.mjs`) |
 
 **Rutas:** `/` (inicio) · `/reservar` (cliente) · `/barbero/login` · `/barbero` (dashboard).
 
