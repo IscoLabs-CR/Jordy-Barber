@@ -18,7 +18,7 @@ import {
   longDateLabel,
   upcomingDates,
   dateParts,
-  isSunday,
+  isClosedDay,
   minutesToLabel,
   formatCRC,
   weekRange,
@@ -27,6 +27,7 @@ import {
   CLOSE_MIN,
   SLOT_STEP_MIN,
   SHOP_NAME,
+  SHOP_TZ,
 } from "@/lib/booking";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -65,18 +66,23 @@ export default function Dashboard({
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<ModalState>(null);
   const [week, setWeek] = useState<WeekStats | null>(null);
+  // Notifications: recent bookings + count of ones not yet seen by the barber.
+  const [notifs, setNotifs] = useState<Appointment[]>([]);
+  const [unseen, setUnseen] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   const load = useCallback(
     async (d: string) => {
       setLoading(true);
       const dayStart = shopInstant(d, 0);
       const dayEnd = shopInstant(addDaysStr(d, 1), 0);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("appointments")
         .select("*")
         .gte("start_time", dayStart.toISOString())
         .lt("start_time", dayEnd.toISOString())
         .order("start_time");
+      if (error) console.error("No se pudo cargar la agenda del día:", error.message);
       setAppts((data ?? []) as Appointment[]);
       setLoading(false);
     },
@@ -87,12 +93,13 @@ export default function Dashboard({
   // already finished (end_time <= now). Percentage = realized / expected.
   const loadWeek = useCallback(async () => {
     const wr = weekRange();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("appointments")
       .select("service_type, end_time")
       .eq("kind", "booking")
       .gte("start_time", wr.start.toISOString())
       .lt("start_time", wr.end.toISOString());
+    if (error) console.error("No se pudo cargar el resumen semanal:", error.message);
     const rows = (data ?? []) as {
       service_type: ServiceType | null;
       end_time: string;
@@ -110,6 +117,24 @@ export default function Dashboard({
     }
     setWeek({ expected, realized, count, startStr: wr.startStr });
   }, [supabase]);
+
+  // Recent reservations (bookings made by clients), newest first. Loaded on
+  // mount without touching the unseen count — only live inserts light the dot.
+  const loadNotifs = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("appointments")
+      .select("*")
+      .eq("kind", "booking")
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error) console.error("No se pudieron cargar las notificaciones:", error.message);
+    setNotifs((data ?? []) as Appointment[]);
+  }, [supabase]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadNotifs();
+  }, [loadNotifs]);
 
   useEffect(() => {
     // Fetch the day's agenda from Supabase; setState happens after the async
@@ -136,9 +161,20 @@ export default function Dashboard({
           table: "appointments",
           filter: `barber_id=eq.${barberId}`,
         },
-        () => {
+        (payload) => {
           load(dateStr);
           loadWeek();
+          // A client just booked a slot: surface it in notifications and
+          // light the red dot until the barber opens the panel.
+          if (payload.eventType === "INSERT") {
+            const row = payload.new as Appointment;
+            if (row.kind === "booking") {
+              setNotifs((prev) =>
+                [row, ...prev.filter((n) => n.id !== row.id)].slice(0, 30),
+              );
+              setUnseen((u) => u + 1);
+            }
+          }
         },
       )
       .subscribe();
@@ -147,9 +183,21 @@ export default function Dashboard({
     };
   }, [supabase, barberId, dateStr, load, loadWeek]);
 
+  function toggleNotif() {
+    setNotifOpen((open) => {
+      if (!open) setUnseen(0);
+      return !open;
+    });
+  }
+
   async function removeAppt(id: string) {
     if (!confirm("¿Eliminar este espacio de tu agenda?")) return;
-    await supabase.from("appointments").delete().eq("id", id);
+    const { error } = await supabase.from("appointments").delete().eq("id", id);
+    if (error) {
+      console.error("No se pudo eliminar el espacio de la agenda:", error.message);
+      alert("No se pudo eliminar. Intentá de nuevo.");
+      return;
+    }
     load(dateStr);
     loadWeek();
   }
@@ -176,6 +224,13 @@ export default function Dashboard({
           </div>
           <div className="flex items-center gap-2">
             <ShareButton />
+            <NotifBell
+              notifs={notifs}
+              unseen={unseen}
+              open={notifOpen}
+              onToggle={toggleNotif}
+              onClose={() => setNotifOpen(false)}
+            />
             <button
               onClick={logout}
               className="rounded-full border border-line px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-brand hover:text-brand"
@@ -317,73 +372,6 @@ export default function Dashboard({
   );
 }
 
-/* --------------------------------------------------------------- compartir */
-
-// Botón que abre la hoja de compartir nativa del teléfono (Web Share API) con el
-// enlace de reservas, para que el barbero lo pase a sus clientes por WhatsApp,
-// Mensajes, etc. En dispositivos sin `navigator.share` (escritorio) copia el
-// enlace al portapapeles y muestra un aviso breve.
-function ShareButton() {
-  const [copied, setCopied] = useState(false);
-
-  async function share() {
-    const url = window.location.origin;
-    const shareData = {
-      title: `${SHOP_NAME} — Reservá tu cita`,
-      text: `Reservá tu cita en ${SHOP_NAME} 💈`,
-      url,
-    };
-    if (typeof navigator !== "undefined" && navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch {
-        // El usuario cerró la hoja sin compartir (AbortError) u otro error: ignorar.
-      }
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Sin permiso de portapapeles: no hay más que hacer de forma segura.
-    }
-  }
-
-  return (
-    <div className="relative">
-      <button
-        onClick={share}
-        aria-label="Compartir enlace de reservas"
-        className="grid h-10 w-10 place-items-center rounded-full border border-line text-ink transition-colors hover:border-brand hover:text-brand"
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <circle cx="18" cy="5" r="3" />
-          <circle cx="6" cy="12" r="3" />
-          <circle cx="18" cy="19" r="3" />
-          <path d="M8.59 13.51l6.83 3.98" />
-          <path d="M15.41 6.51l-6.82 3.98" />
-        </svg>
-      </button>
-      {copied && (
-        <span className="absolute right-0 top-12 z-50 whitespace-nowrap rounded-full bg-ink px-3 py-1.5 text-xs font-medium text-paper shadow-lg">
-          ¡Enlace copiado!
-        </span>
-      )}
-    </div>
-  );
-}
-
 /* --------------------------------------------------- push notifications */
 
 type PushStatus = "loading" | "unsupported" | "need-install" | "off" | "on";
@@ -506,6 +494,178 @@ function PushSetup({
         </button>
       </div>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------- compartir */
+
+// Botón que abre la hoja de compartir nativa del teléfono (Web Share API) con el
+// enlace de reservas, para que el barbero lo pase a sus clientes por WhatsApp,
+// Mensajes, etc. En dispositivos sin `navigator.share` (escritorio) copia el
+// enlace al portapapeles y muestra un aviso breve.
+function ShareButton() {
+  const [copied, setCopied] = useState(false);
+
+  async function share() {
+    const url = window.location.origin;
+    const shareData = {
+      title: `${SHOP_NAME} — Reservá tu cita`,
+      text: `Reservá tu cita en ${SHOP_NAME} 💈`,
+      url,
+    };
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        // El usuario cerró la hoja sin compartir (AbortError) u otro error: ignorar.
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Sin permiso de portapapeles: no hay más que hacer de forma segura.
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={share}
+        aria-label="Compartir enlace de reservas"
+        className="grid h-10 w-10 place-items-center rounded-full border border-line text-ink transition-colors hover:border-brand hover:text-brand"
+      >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <circle cx="18" cy="5" r="3" />
+          <circle cx="6" cy="12" r="3" />
+          <circle cx="18" cy="19" r="3" />
+          <path d="M8.59 13.51l6.83 3.98" />
+          <path d="M15.41 6.51l-6.82 3.98" />
+        </svg>
+      </button>
+      {copied && (
+        <span className="absolute right-0 top-12 z-50 whitespace-nowrap rounded-full bg-ink px-3 py-1.5 text-xs font-medium text-paper shadow-lg">
+          ¡Enlace copiado!
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------- notifications */
+
+function NotifBell({
+  notifs,
+  unseen,
+  open,
+  onToggle,
+  onClose,
+}: {
+  notifs: Appointment[];
+  unseen: number;
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="relative">
+      <button
+        onClick={onToggle}
+        aria-label="Notificaciones"
+        className="relative grid h-10 w-10 place-items-center rounded-full border border-line text-ink transition-colors hover:border-brand hover:text-brand"
+      >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
+        {unseen > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-paper">
+            {unseen > 9 ? "9+" : unseen}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <>
+          {/* Click-away backdrop */}
+          <div className="fixed inset-0 z-40" onClick={onClose} aria-hidden />
+          <div className="absolute right-0 top-12 z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-line bg-paper shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <p className="font-display text-sm font-semibold uppercase tracking-wide text-ink">
+                Reservas
+              </p>
+              <button
+                onClick={onClose}
+                aria-label="Cerrar"
+                className="grid h-7 w-7 place-items-center rounded-full text-muted transition-colors hover:bg-line hover:text-brand"
+              >
+                ✕
+              </button>
+            </div>
+            {notifs.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-muted">
+                Aún no hay reservas.
+              </p>
+            ) : (
+              <ul className="max-h-80 overflow-y-auto">
+                {notifs.map((n) => {
+                  const svc = n.service_type ? getService(n.service_type) : null;
+                  return (
+                    <li
+                      key={n.id}
+                      className="flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0"
+                    >
+                      <span
+                        className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand"
+                        aria-hidden
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-display text-sm font-semibold uppercase tracking-wide text-ink">
+                          {n.client_name ?? "Cliente"}
+                        </p>
+                        <p className="text-xs text-muted">
+                          {longDateLabel(
+                            new Intl.DateTimeFormat("en-CA", {
+                              timeZone: SHOP_TZ,
+                            }).format(new Date(n.start_time)),
+                          )}{" "}
+                          · {formatShopTime(n.start_time)}
+                        </p>
+                        {svc && (
+                          <p className="text-xs text-muted">{svc.label}</p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -688,17 +848,17 @@ function DayChips({
     <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
       {dates.map((d) => {
         const p = dateParts(d);
-        const sun = isSunday(d);
+        const closed = isClosedDay(d);
         const active = value === d;
         return (
           <button
             key={d}
             type="button"
-            disabled={sun}
+            disabled={closed}
             onClick={() => onChange(d)}
             className={[
               "flex shrink-0 flex-col items-center rounded-xl border px-3 py-2 transition-colors",
-              sun
+              closed
                 ? "cursor-not-allowed border-line bg-line/40 text-muted/60"
                 : active
                   ? "border-brand bg-brand text-white"
@@ -786,7 +946,8 @@ function useBusy(supabase: SupabaseClient) {
         .gte("start_time", dayStart)
         .lt("start_time", dayEnd);
       if (excludeId) q = q.neq("id", excludeId);
-      const { data } = await q;
+      const { data, error } = await q;
+      if (error) console.error("No se pudo cargar la disponibilidad:", error.message);
       return ((data ?? []) as { start_time: string; end_time: string }[]).map(
         (r) => ({ start: new Date(r.start_time), end: new Date(r.end_time) }),
       );
@@ -1078,7 +1239,7 @@ function RescheduleModal({
   );
   // The appointment's calendar day in the shop timezone (YYYY-MM-DD).
   const startDateStr = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Costa_Rica",
+    timeZone: SHOP_TZ,
   }).format(new Date(appt.start_time));
 
   const [date, setDate] = useState(startDateStr);

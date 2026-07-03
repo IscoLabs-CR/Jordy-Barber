@@ -104,6 +104,14 @@ export function isSunday(dateStr: string): boolean {
   return dowFromDateStr(dateStr) === 0;
 }
 
+// Days the shop is closed, 0 = Sunday .. 6 = Saturday.
+export const CLOSED_DOWS: number[] = [0];
+
+/** True when the shop is closed on that calendar day. */
+export function isClosedDay(dateStr: string): boolean {
+  return CLOSED_DOWS.includes(dowFromDateStr(dateStr));
+}
+
 /** Absolute instant for a shop-local wall-clock time on a given calendar day. */
 export function shopInstant(dateStr: string, minutesFromMidnight: number): Date {
   const h = Math.floor(minutesFromMidnight / 60);
