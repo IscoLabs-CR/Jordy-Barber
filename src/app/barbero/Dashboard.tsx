@@ -174,12 +174,15 @@ export default function Dashboard({
               {barberName}
             </p>
           </div>
-          <button
-            onClick={logout}
-            className="rounded-full border border-line px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-brand hover:text-brand"
-          >
-            Salir
-          </button>
+          <div className="flex items-center gap-2">
+            <ShareButton />
+            <button
+              onClick={logout}
+              className="rounded-full border border-line px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-brand hover:text-brand"
+            >
+              Salir
+            </button>
+          </div>
         </div>
       </header>
 
@@ -309,6 +312,73 @@ export default function Dashboard({
             load(d);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------- compartir */
+
+// Botón que abre la hoja de compartir nativa del teléfono (Web Share API) con el
+// enlace de reservas, para que el barbero lo pase a sus clientes por WhatsApp,
+// Mensajes, etc. En dispositivos sin `navigator.share` (escritorio) copia el
+// enlace al portapapeles y muestra un aviso breve.
+function ShareButton() {
+  const [copied, setCopied] = useState(false);
+
+  async function share() {
+    const url = window.location.origin;
+    const shareData = {
+      title: `${SHOP_NAME} — Reservá tu cita`,
+      text: `Reservá tu cita en ${SHOP_NAME} 💈`,
+      url,
+    };
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        // El usuario cerró la hoja sin compartir (AbortError) u otro error: ignorar.
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Sin permiso de portapapeles: no hay más que hacer de forma segura.
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={share}
+        aria-label="Compartir enlace de reservas"
+        className="grid h-10 w-10 place-items-center rounded-full border border-line text-ink transition-colors hover:border-brand hover:text-brand"
+      >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <circle cx="18" cy="5" r="3" />
+          <circle cx="6" cy="12" r="3" />
+          <circle cx="18" cy="19" r="3" />
+          <path d="M8.59 13.51l6.83 3.98" />
+          <path d="M15.41 6.51l-6.82 3.98" />
+        </svg>
+      </button>
+      {copied && (
+        <span className="absolute right-0 top-12 z-50 whitespace-nowrap rounded-full bg-ink px-3 py-1.5 text-xs font-medium text-paper shadow-lg">
+          ¡Enlace copiado!
+        </span>
       )}
     </div>
   );
