@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Oswald, Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -22,6 +22,25 @@ export const metadata: Metadata = {
   title: "Jordy Barber — Reserva tu cita",
   description:
     "Agenda tu corte con tu barbero preferido. Elegí barbero, día y estilo, sin cuenta.",
+  // iOS no toma todo del manifest: necesita el apple-touch-icon y el meta
+  // apple-mobile-web-app para instalarse "a pantalla completa" y habilitar push.
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Jordy Barber",
+  },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0077b6",
 };
 
 export default function RootLayout({

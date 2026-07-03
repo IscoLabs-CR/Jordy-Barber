@@ -29,6 +29,14 @@ import {
   SHOP_NAME,
 } from "@/lib/booking";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  isPushSupported,
+  isStandalone,
+  isIOS,
+  getExistingSubscription,
+  subscribeBarber,
+  unsubscribeBarber,
+} from "@/lib/push";
 
 type ModalState =
   | null
@@ -176,6 +184,9 @@ export default function Dashboard({
       </header>
 
       <div className="mx-auto w-full max-w-3xl px-5 pb-20">
+        {/* Notificaciones push: instalar la app + activar avisos por reserva */}
+        <PushSetup supabase={supabase} barberId={barberId} />
+
         {/* Weekly earnings */}
         {week && <WeeklyPanel week={week} />}
 
@@ -299,6 +310,132 @@ export default function Dashboard({
           }}
         />
       )}
+    </div>
+  );
+}
+
+/* --------------------------------------------------- push notifications */
+
+type PushStatus = "loading" | "unsupported" | "need-install" | "off" | "on";
+
+// Banner que instala la app (iOS) y activa las notificaciones push del sistema
+// para que el barbero reciba un aviso por cada reserva aunque tenga la app
+// cerrada. Se auto-oculta cuando ya está todo activado.
+function PushSetup({
+  supabase,
+  barberId,
+}: {
+  supabase: SupabaseClient;
+  barberId: string;
+}) {
+  const [status, setStatus] = useState<PushStatus>("loading");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // iOS solo expone la API de push cuando la web está instalada en la
+      // pantalla de inicio; antes de eso hay que guiar al barbero a instalarla.
+      if (!isPushSupported()) {
+        const next = isIOS() && !isStandalone() ? "need-install" : "unsupported";
+        if (!cancelled) setStatus(next);
+        return;
+      }
+      const sub = await getExistingSubscription();
+      const granted =
+        typeof Notification !== "undefined" && Notification.permission === "granted";
+      if (!cancelled) setStatus(sub && granted ? "on" : "off");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function enable() {
+    setBusy(true);
+    setError(null);
+    try {
+      await subscribeBarber(supabase, barberId);
+      setStatus("on");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo activar.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disable() {
+    setBusy(true);
+    setError(null);
+    try {
+      await unsubscribeBarber(supabase);
+      setStatus("off");
+    } catch {
+      setError("No se pudo desactivar. Intentá de nuevo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (status === "loading" || status === "unsupported") return null;
+
+  if (status === "on") {
+    return (
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-line bg-paper px-4 py-3">
+        <p className="text-sm text-ink">
+          <span className="mr-1.5 text-brand">●</span>
+          Notificaciones activadas en este dispositivo.
+        </p>
+        <button
+          onClick={disable}
+          disabled={busy}
+          className="text-xs font-medium text-muted underline underline-offset-2 hover:text-ink disabled:opacity-50"
+        >
+          Desactivar
+        </button>
+      </div>
+    );
+  }
+
+  if (status === "need-install") {
+    return (
+      <div className="mt-4 rounded-2xl border border-brand/30 bg-brand/5 px-4 py-3">
+        <p className="font-display text-sm font-semibold uppercase tracking-wide text-brand">
+          Recibí un aviso por cada reserva
+        </p>
+        <p className="mt-1 text-sm text-ink">
+          En iPhone/iPad, primero instalá la app: tocá el botón{" "}
+          <span aria-hidden>⎋</span> <strong>Compartir</strong> y luego{" "}
+          <strong>“Agregar a inicio”</strong>. Abrí la app desde el ícono y volvé
+          acá para activar las notificaciones.
+        </p>
+      </div>
+    );
+  }
+
+  // status === "off"
+  return (
+    <div className="mt-4 rounded-2xl border border-brand/30 bg-brand/5 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-display text-sm font-semibold uppercase tracking-wide text-brand">
+            Activá los avisos de reservas
+          </p>
+          <p className="mt-1 text-sm text-ink">
+            Te llega una notificación al teléfono cada vez que un cliente reserva,
+            aunque tengás la app cerrada.
+          </p>
+        </div>
+        <button
+          onClick={enable}
+          disabled={busy}
+          className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-2.5 font-display text-sm font-semibold uppercase tracking-wide text-white transition-colors hover:bg-brand-deep disabled:opacity-60"
+        >
+          {busy ? "Activando…" : "Activar notificaciones"}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </div>
   );
 }
