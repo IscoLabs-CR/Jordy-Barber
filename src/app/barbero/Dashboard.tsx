@@ -815,7 +815,7 @@ function Modal({
       onClick={onClose}
     >
       <div
-        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-line bg-paper p-6 shadow-2xl sm:rounded-3xl"
+        className="max-h-[92vh] w-full max-w-md min-w-0 overflow-y-auto rounded-t-3xl border border-line bg-paper p-6 shadow-2xl sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -1027,10 +1027,10 @@ function NewAppointmentModal({
 
   return (
     <Modal title="Nueva cita" onClose={onClose}>
-      <div className="grid gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <div>
           <p className="mb-2 text-sm font-medium text-ink">Servicio</p>
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             {SERVICES.map((s) => (
               <button
                 key={s.id}
@@ -1155,7 +1155,7 @@ function BlockModal({
 
   return (
     <Modal title="Bloquear horario" onClose={onClose}>
-      <div className="grid gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <p className="text-sm text-muted">
           Reservá tiempo para vos. Los clientes no podrán agendar en ese rango.
         </p>
@@ -1165,8 +1165,8 @@ function BlockModal({
           <DayChips value={date} onChange={setDate} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
+        <div className="grid grid-cols-1 gap-3">
+          <label className="block min-w-0">
             <span className="mb-1.5 block text-sm font-medium text-ink">
               Desde
             </span>
@@ -1177,7 +1177,7 @@ function BlockModal({
                 setStartMin(v);
                 if (endMin <= v) setEndMin(v + SLOT_STEP_MIN);
               }}
-              className="w-full rounded-xl border border-line px-3 py-2.5 font-mono text-ink outline-none focus:border-brand"
+              className="w-full min-w-0 rounded-xl border border-line px-3 py-2.5 font-mono text-ink outline-none focus:border-brand"
             >
               {startOptions.map((m) => (
                 <option key={m} value={m}>
@@ -1186,14 +1186,14 @@ function BlockModal({
               ))}
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="mb-1.5 block text-sm font-medium text-ink">
               Hasta
             </span>
             <select
               value={endMin}
               onChange={(e) => setEndMin(Number(e.target.value))}
-              className="w-full rounded-xl border border-line px-3 py-2.5 font-mono text-ink outline-none focus:border-brand"
+              className="w-full min-w-0 rounded-xl border border-line px-3 py-2.5 font-mono text-ink outline-none focus:border-brand"
             >
               {endOptions.map((m) => (
                 <option key={m} value={m}>
@@ -1290,7 +1290,7 @@ function RescheduleModal({
 
   return (
     <Modal title="Reagendar cita" onClose={onClose}>
-      <div className="grid gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <div className="rounded-xl border border-line bg-line/30 px-4 py-3 text-sm">
           <span className="font-medium text-ink">{appt.client_name}</span>
           <span className="text-muted">
